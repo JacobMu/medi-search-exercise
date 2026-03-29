@@ -29,14 +29,13 @@ class AnalyticsStore:
                 total_generations=0,
                 avg_rating=0.0,
                 avg_processing_time_ms=0.0,
-                rating_distribution={str(r): 0 for r in range(1, 6)},
+                rating_distribution={},
             )
 
         avg_rating = sum(e.rating for e in entries) / total
         avg_processing_time_ms = sum(e.processing_time_ms for e in entries) / total
 
-        distribution = {str(r): 0 for r in range(1, 6)}
-        distribution.update(Counter(str(e.rating) for e in entries))
+        distribution = dict(Counter(str(e.rating) for e in entries))
 
         return StatsResponse(
             total_generations=total,
