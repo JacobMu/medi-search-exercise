@@ -1,7 +1,7 @@
 import asyncio
 from collections import Counter
 
-from models.analytics import SaveRequest, StatsResponse
+from src.models.analytics import SaveRequest, StatsResponse
 
 
 class AnalyticsStore:

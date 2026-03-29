@@ -2,8 +2,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from config import OUTPUT_DIR
-from routers import overlay, save, stats
+from src.config import OUTPUT_DIR
+from src.routers import overlay, save, stats
 
 app = FastAPI(
     title="Ad Creatives Compositor",

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
-from models.analytics import SaveRequest
-from services.analytics import analytics_store
-from store.jobs import job_store
+from src.models.analytics import SaveRequest
+from src.services.analytics import analytics_store
+from src.store.jobs import job_store
 
 router = APIRouter()
 

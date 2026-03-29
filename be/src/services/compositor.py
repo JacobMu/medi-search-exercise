@@ -25,6 +25,11 @@ import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
+# Restrict maximum decoded image size to ~16 MP (4000x4000).
+# PIL's default cap is ~178 MP; lowering it prevents excessive RAM
+# allocation from oversized or crafted input images.
+Image.MAX_IMAGE_PIXELS = 4000 * 4000
+
 # Hue in OpenCV is 0-180; green sits roughly 35-85.
 # Wide S/V ranges make detection robust to shadows and over-exposure.
 _H_LOW, _H_HIGH = 35, 85

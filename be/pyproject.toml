@@ -48,7 +48,7 @@ ignore = []
 "tests/**" = ["S101"]  # pytest uses assert statements
 
 [tool.ruff.lint.isort]
-known-first-party = ["routers", "services", "store", "models"]
+known-first-party = ["src"]
 
 [tool.ruff.format]
 quote-style = "double"

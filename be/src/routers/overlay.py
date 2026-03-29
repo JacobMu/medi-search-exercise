@@ -1,15 +1,15 @@
 import asyncio
 import uuid
-from concurrent.futures import ProcessPoolExecutor
 from typing import NotRequired, TypedDict
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 
-from config import OUTPUT_DIR
-from models.job import JobStatus
-from services.compositor import composite
-from store.jobs import job_store
+from src.config import MAX_IMAGE_BYTES
+from src.models.job import JobStatus
+from src.overlay.file_utils import read_limited
+from src.overlay.processing import background_tasks, run_composite_job
+from src.store.jobs import job_store
 
 
 class JobPayload(TypedDict):
@@ -21,41 +21,12 @@ class JobPayload(TypedDict):
 
 router = APIRouter()
 
-# Shared process-pool — initialised once at import time so workers are
-# forked before any large model/library state is loaded.
-_executor = ProcessPoolExecutor()
-
-# Holds strong references to background tasks so they are not garbage-collected
-# before completion (per RUF006 / asyncio docs).
-_background_tasks: set[asyncio.Task[None]] = set()
-
-
-async def _run_composite_job(job_id: str, avatar_bytes: bytes, screenshot_bytes: bytes) -> None:
-    """Background task: run compositing in a process-pool, update job state."""
-    await job_store.set_processing(job_id)
-    loop = asyncio.get_running_loop()
-    try:
-        result_bytes: bytes = await loop.run_in_executor(
-            _executor,
-            composite,
-            avatar_bytes,
-            screenshot_bytes,
-        )
-    except Exception as exc:
-        await job_store.set_failed(job_id, str(exc))
-        return
-
-    output_path = OUTPUT_DIR / f"{job_id}.png"
-    output_path.write_bytes(result_bytes)
-
-    await job_store.set_completed(job_id, str(output_path))
-
 
 @router.post("/overlay", status_code=status.HTTP_202_ACCEPTED)
 async def overlay(avatar: UploadFile, screenshot: UploadFile) -> JSONResponse:
     """Accept avatar + screenshot files and kick off async compositing."""
-    avatar_bytes = await avatar.read()
-    screenshot_bytes = await screenshot.read()
+    avatar_bytes = await read_limited(avatar, MAX_IMAGE_BYTES, "avatar")
+    screenshot_bytes = await read_limited(screenshot, MAX_IMAGE_BYTES, "screenshot")
 
     if not avatar_bytes:
         raise HTTPException(status_code=400, detail="avatar file is empty.")
@@ -65,9 +36,9 @@ async def overlay(avatar: UploadFile, screenshot: UploadFile) -> JSONResponse:
     job_id = str(uuid.uuid4())
     await job_store.create(job_id)
 
-    task = asyncio.create_task(_run_composite_job(job_id, avatar_bytes, screenshot_bytes))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    task = asyncio.create_task(run_composite_job(job_id, avatar_bytes, screenshot_bytes))
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
         content={"job_id": job_id, "status": "pending"},
