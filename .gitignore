@@ -14,3 +14,7 @@ ehthumbs.db
 
 # Tests
 test_assets/
+
+# Agent files
+docs/
+plans/

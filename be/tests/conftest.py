@@ -30,4 +30,4 @@ def avatar_bytes() -> bytes:
 
 @pytest.fixture
 def screenshot_bytes() -> bytes:
-    return (TEST_ASSETS / "avatar2.png").read_bytes()
+    return (TEST_ASSETS / "screenshot.png").read_bytes()

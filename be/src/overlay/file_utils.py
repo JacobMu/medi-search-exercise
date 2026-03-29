@@ -17,7 +17,7 @@ async def read_limited(upload: UploadFile, limit: int, field: str) -> bytes:
         total += len(chunk)
         if total > limit:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail=f"'{field}' exceeds the {limit // (1024 * 1024)} MB size limit.",
             )
         chunks.append(chunk)

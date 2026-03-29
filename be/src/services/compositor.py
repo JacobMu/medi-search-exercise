@@ -74,10 +74,26 @@ def _build_green_mask(avatar_bgr: NDArray[np.uint8]) -> NDArray[np.uint8]:
     return mask.astype(np.uint8)
 
 
-def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
-    """Return the 4-corner convex hull of the largest green contour.
+def _inset_quad(pts: NDArray[np.float32], pixels: int = 10) -> NDArray[np.float32]:
+    """Shrink a 4-point quad by moving each corner toward the centroid by `pixels`.
 
-    Returns an array of shape (4, 2) in float32.
+    Counteracts the morphological dilation expansion (~7 px per side) so the
+    destination quad sits inside the actual phone glass boundary.
+    """
+    centroid = pts.mean(axis=0)
+    dirs = centroid - pts
+    norms = np.linalg.norm(dirs, axis=1, keepdims=True).clip(min=1e-6)
+    return (pts + dirs / norms * pixels).astype(np.float32)
+
+
+def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
+    """Return the 4-corner bounding rectangle of the largest green contour.
+
+    Uses cv2.minAreaRect so the returned quad accurately matches the phone
+    screen's orientation rather than being skewed by contour-point sampling
+    artefacts (which approxPolyDP corners can introduce).
+
+    Returns an array of shape (4, 2) in float32, ordered [TL, TR, BR, BL].
     Raises ValueError if no suitable contour is found.
     """
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -88,17 +104,10 @@ def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
     if cv2.contourArea(largest) < 500:
         raise ValueError("Green-screen region is too small to be a phone screen.")
 
-    hull = cv2.convexHull(largest)
-    epsilon = 0.02 * cv2.arcLength(hull, closed=True)
-    approx = cv2.approxPolyDP(hull, epsilon, closed=True)
-
-    # If approximation doesn't yield exactly 4 points, fall back to the
-    # bounding rotated rectangle's corners.
-    if len(approx) != 4:
-        rect = cv2.minAreaRect(largest)
-        approx = cv2.boxPoints(rect).reshape(-1, 1, 2)
-
-    pts = approx.reshape(-1, 2).astype(np.float32)
+    # minAreaRect fits the tightest enclosing rectangle to all contour points,
+    # giving an accurate estimate of the phone screen's orientation.
+    rect = cv2.minAreaRect(largest)
+    pts = cv2.boxPoints(rect).astype(np.float32)
 
     coord_sums = pts.sum(axis=1)
     coord_diffs = np.diff(pts, axis=1).flatten()
@@ -114,12 +123,47 @@ def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
     return ordered
 
 
+def _crop_to_content(img_bgr: NDArray[np.uint8], threshold: int = 250) -> NDArray[np.uint8]:
+    """Crop image to its non-background content bounding box.
+
+    Pixels where all three channels are >= threshold are considered background
+    (white padding).  Returns the original array unchanged if no non-background
+    pixels are found.
+    """
+    non_bg = np.any(img_bgr < threshold, axis=2)
+    rows = np.where(non_bg.any(axis=1))[0]
+    cols = np.where(non_bg.any(axis=0))[0]
+    if len(rows) == 0 or len(cols) == 0:
+        return img_bgr
+    return img_bgr[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
+
+
+def _rounded_rect_mask(h: int, w: int, radius: int) -> NDArray[np.uint8]:
+    """Return a filled white mask of shape (h, w) with rounded corners."""
+    mask = np.zeros((h, w), dtype=np.uint8)
+    r = min(radius, h // 2, w // 2)
+    # Fill the two axis-aligned inner rectangles.
+    cv2.rectangle(mask, (r, 0), (w - r, h), 255, -1)
+    cv2.rectangle(mask, (0, r), (w, h - r), 255, -1)
+    # Fill the four rounded corners with filled ellipse quadrants.
+    cv2.ellipse(mask, (r, r), (r, r), 180, 0, 90, 255, -1)
+    cv2.ellipse(mask, (w - r, r), (r, r), 270, 0, 90, 255, -1)
+    cv2.ellipse(mask, (w - r, h - r), (r, r), 0, 0, 90, 255, -1)
+    cv2.ellipse(mask, (r, h - r), (r, r), 90, 0, 90, 255, -1)
+    return mask
+
+
 def _warp_screenshot(
     screenshot_bgr: NDArray[np.uint8],
     dst_pts: NDArray[np.float32],
     canvas_shape: tuple[int, int],
+    corner_radius_fraction: float = 0.12,
 ) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
     """Perspective-warp the screenshot to fill dst_pts on a blank canvas.
+
+    The source mask has rounded corners (proportional to the shorter screen
+    dimension) so that after warping the composited screenshot matches the
+    rounded display glass of the phone.
 
     Returns (warped_image, warp_mask) — both HxW arrays / HxWx3 arrays.
     """
@@ -130,10 +174,21 @@ def _warp_screenshot(
     )
     m = cv2.getPerspectiveTransform(src_pts, dst_pts)
     canvas_h, canvas_w = canvas_shape
-    warped = cv2.warpPerspective(screenshot_bgr, m, (canvas_w, canvas_h))
-
-    src_mask = np.ones((h, w), dtype=np.uint8) * 255
-    warp_mask = cv2.warpPerspective(src_mask, m, (canvas_w, canvas_h))
+    # BORDER_REPLICATE fills outside-quad pixels with the nearest screenshot edge
+    # so that green residue at the border is covered with realistic content.
+    warped = cv2.warpPerspective(
+        screenshot_bgr,
+        m,
+        (canvas_w, canvas_h),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    # Build source mask with rounded corners, then warp it through the same
+    # perspective transform so the rounding matches the screen's orientation.
+    radius = int(min(h, w) * corner_radius_fraction)
+    src_mask = _rounded_rect_mask(h, w, radius)
+    # INTER_NEAREST prevents bilinear interpolation from bleeding the binary mask
+    # beyond the quad boundary (especially at corners after perspective distortion).
+    warp_mask = cv2.warpPerspective(src_mask, m, (canvas_w, canvas_h), flags=cv2.INTER_NEAREST)
     return warped.astype(np.uint8), warp_mask.astype(np.uint8)
 
 
@@ -153,13 +208,22 @@ def composite(avatar_bytes: bytes, screenshot_bytes: bytes) -> bytes:
     avatar_bgr = cv2.cvtColor(avatar_rgb, cv2.COLOR_RGB2BGR).astype(np.uint8)
     screenshot_bgr = cv2.cvtColor(screenshot_rgb, cv2.COLOR_RGB2BGR).astype(np.uint8)
 
+    # Remove white/neutral padding so the actual phone content fills the screen quad.
+    screenshot_bgr = _crop_to_content(screenshot_bgr)
+
     mask = _build_green_mask(avatar_bgr)
-    screen_quad = _find_screen_quad(mask)
+    # Inset the quad corners toward the centroid to counteract the ~7 px per-side
+    # expansion introduced by the morphological dilation in _build_green_mask.
+    screen_quad = _inset_quad(_find_screen_quad(mask), pixels=10)
 
     canvas_h, canvas_w = avatar_bgr.shape[:2]
     warped, warp_mask = _warp_screenshot(screenshot_bgr, screen_quad, (canvas_h, canvas_w))
 
     result = avatar_bgr.copy()
+    # Use only the warped screen mask to composite the screenshot.
+    # ORing with the raw green mask caused screenshot content (from BORDER_REPLICATE)
+    # to bleed into the phone bezel where residual green pixels extended beyond the
+    # actual screen glass, producing visible overflow on the left and bottom-right.
     result[warp_mask > 0] = warped[warp_mask > 0]
 
     success, encoded = cv2.imencode(".png", result)
