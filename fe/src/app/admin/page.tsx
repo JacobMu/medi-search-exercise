@@ -2,13 +2,15 @@ import { RatingBar } from "@/admin/components/RatingBar";
 import { StatCard } from "@/admin/components/StatCard";
 import type { StatsResponse } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   let stats: StatsResponse;
 
   try {
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
     const res = await fetch(`${backendUrl}/stats`, {
-      next: { revalidate: 30 },
+      cache: 'no-store',
     });
     if (!res.ok) throw new Error("Stats fetch failed");
     stats = (await res.json()) as StatsResponse;

@@ -159,8 +159,10 @@ export function useCompose(): UseComposeReturn {
       job_id: jobIdRef.current,
       rating,
       processing_time_ms: processingTimeMsRef.current,
-    }).catch(() => {
-      // best-effort; swallow silently
+    }).catch((err) => {
+      const msg = err instanceof Error ? err.message : "Failed to save rating";
+      phaseRef.current = "error";
+      setState((prev) => ({ ...prev, phase: "error", errorMessage: msg }));
     });
   }, []);
 

@@ -1,0 +1,27 @@
+services:
+  be:
+    build:
+      context: ./be
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - be_output:/app/output
+    restart: unless-stopped
+
+  fe:
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+      args:
+        - BACKEND_URL=http://be:8000
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://be:8000
+    depends_on:
+      - be
+    restart: unless-stopped
+
+volumes:
+  be_output:
