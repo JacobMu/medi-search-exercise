@@ -169,11 +169,7 @@ def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
     p2_hi = float(np.percentile(proj2, 100.0 - trim))
 
     # Recentre on the trimmed extent midpoint so there is no systematic shift.
-    new_center = (
-        center_arr
-        + ((p1_lo + p1_hi) / 2.0) * axis1
-        + ((p2_lo + p2_hi) / 2.0) * axis2
-    )
+    new_center = center_arr + ((p1_lo + p1_hi) / 2.0) * axis1 + ((p2_lo + p2_hi) / 2.0) * axis2
     half1 = (p1_hi - p1_lo) / 2.0
     half2 = (p2_hi - p2_lo) / 2.0
 
@@ -193,9 +189,9 @@ def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
     coord_diffs = np.diff(pts, axis=1).flatten()
     return np.array(
         [
-            pts[np.argmin(coord_sums)],   # top-left
+            pts[np.argmin(coord_sums)],  # top-left
             pts[np.argmin(coord_diffs)],  # top-right
-            pts[np.argmax(coord_sums)],   # bottom-right
+            pts[np.argmax(coord_sums)],  # bottom-right
             pts[np.argmax(coord_diffs)],  # bottom-left
         ],
         dtype=np.float32,
