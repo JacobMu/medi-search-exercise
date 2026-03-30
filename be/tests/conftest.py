@@ -7,8 +7,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
-from src.services.analytics import analytics_store
-from src.store.jobs import job_store
+from src.shared.analytics_store import analytics_store
+from src.shared.job_store import job_store
 
 TEST_ASSETS = Path(__file__).parent.parent.parent / "test_assets"
 

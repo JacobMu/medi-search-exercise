@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from src.models.analytics import StatsResponse
-from src.services.analytics import analytics_store
+from src.shared.analytics_store import analytics_store
+from src.stats.models import StatsResponse
 
 router = APIRouter()
 

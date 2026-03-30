@@ -3,7 +3,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from src.config import OUTPUT_DIR
-from src.routers import overlay, save, stats
+from src.overlay.router import router as overlay_router
+from src.save.router import router as save_router
+from src.stats.router import router as stats_router
 
 app = FastAPI(
     title="Ad Creatives Compositor",
@@ -13,9 +15,9 @@ app = FastAPI(
 
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 
-app.include_router(overlay.router)
-app.include_router(save.router)
-app.include_router(stats.router)
+app.include_router(overlay_router)
+app.include_router(save_router)
+app.include_router(stats_router)
 
 
 if __name__ == "__main__":

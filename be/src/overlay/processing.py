@@ -3,9 +3,9 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 
 from src.config import OUTPUT_DIR
-from src.services.analytics import analytics_store
-from src.services.compositor import composite
-from src.store.jobs import job_store
+from src.shared.analytics_store import analytics_store
+from src.overlay.compositor import composite
+from src.shared.job_store import job_store
 
 # Shared process-pool — initialised once at import time so workers are
 # forked before any large model/library state is loaded.

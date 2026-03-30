@@ -6,10 +6,10 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from src.config import MAX_IMAGE_BYTES
-from src.models.job import JobStatus
+from src.overlay.models import JobStatus
 from src.overlay.file_utils import read_limited
 from src.overlay.processing import background_tasks, run_composite_job
-from src.store.jobs import job_store
+from src.shared.job_store import job_store
 
 
 class JobPayload(TypedDict):

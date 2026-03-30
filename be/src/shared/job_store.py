@@ -1,7 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 
-from src.models.job import JobRecord, JobStatus
+from src.overlay.models import JobRecord, JobStatus
 
 
 class JobStore:

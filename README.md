@@ -25,7 +25,7 @@ An ad creative compositor that replaces green-screen phone displays with app scr
 | `python-multipart` | File upload support |
 | `python-dotenv` | `.env` loading |
 
-**Code quality:** `ruff` (line length 100, includes `flake8-bandit` security rules)  
+**Code quality:** `ruff`
 **Tests:** `pytest` with `asyncio_mode = auto`; HTTP client via `httpx`
 
 **Routers:** `overlay`, `save`, `stats`  
