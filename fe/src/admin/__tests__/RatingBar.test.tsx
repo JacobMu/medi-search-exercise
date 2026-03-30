@@ -44,4 +44,15 @@ describe("RatingBar", () => {
       expect(fill).toHaveStyle({ width: "0%" });
     }
   });
+
+  it("renders correctly when distribution has missing keys (sparse)", () => {
+    const sparseDist = { "5": 3 } as unknown as RatingDistribution;
+    render(<RatingBar distribution={sparseDist} />);
+    const fillMax = screen.getByTestId("rating-bar-fill-5");
+    expect(fillMax).toHaveStyle({ width: "100%" });
+    for (const star of [1, 2, 3, 4]) {
+      const fill = screen.getByTestId(`rating-bar-fill-${star}`);
+      expect(fill).toHaveStyle({ width: "0%" });
+    }
+  });
 });

@@ -7,12 +7,14 @@ interface RatingBarProps {
 const STARS = [5, 4, 3, 2, 1] as const;
 
 export function RatingBar({ distribution }: RatingBarProps) {
-  const max = Math.max(...STARS.map((s) => distribution[String(s) as keyof RatingDistribution]));
+  const max = Math.max(
+    ...STARS.map((s) => distribution[String(s) as keyof RatingDistribution] ?? 0)
+  );
 
   return (
     <div>
       {STARS.map((star) => {
-        const count = distribution[String(star) as keyof RatingDistribution];
+        const count = distribution[String(star) as keyof RatingDistribution] ?? 0;
         const widthPct = max === 0 ? 0 : Math.round((count / max) * 100);
         return (
           <div

@@ -14,7 +14,7 @@ async def test_save_success(
 
     response = await app_client.post(
         "/save",
-        json={"job_id": job_id, "rating": 4},
+        json={"job_id": job_id, "rating": 4, "processing_time_ms": 100},
     )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
@@ -39,6 +39,6 @@ async def test_save_rating_too_high(app_client: AsyncClient) -> None:
 async def test_save_unknown_job_id(app_client: AsyncClient) -> None:
     response = await app_client.post(
         "/save",
-        json={"job_id": "does-not-exist-xyz", "rating": 3},
+        json={"job_id": "does-not-exist-xyz", "rating": 3, "processing_time_ms": 100},
     )
     assert response.status_code == 404

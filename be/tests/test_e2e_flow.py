@@ -26,7 +26,7 @@ async def test_full_user_journey(
     # 3. Save feedback
     save_response = await app_client.post(
         "/save",
-        json={"job_id": job_id, "rating": 5},
+        json={"job_id": job_id, "rating": 5, "processing_time_ms": 150},
     )
     assert save_response.status_code == 200
     assert save_response.json() == {"ok": True}
@@ -64,7 +64,7 @@ async def test_generation_without_rating_counted_in_stats(
     assert stats["total_generations"] == 1
     assert stats["avg_processing_time_ms"] > 0
     assert stats["avg_rating"] == 0.0
-    assert stats["rating_distribution"] == {}
+    assert stats["rating_distribution"] == {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
 
 
 async def test_failed_job_not_counted_in_stats(

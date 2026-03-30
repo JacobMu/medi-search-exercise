@@ -10,7 +10,7 @@ async def test_stats_empty(app_client: AsyncClient) -> None:
     assert body["total_generations"] == 0
     assert body["avg_rating"] == 0.0
     assert body["avg_processing_time_ms"] == 0.0
-    assert body["rating_distribution"] == {}
+    assert body["rating_distribution"] == {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
 
 
 async def test_stats_aggregation(
@@ -34,11 +34,11 @@ async def test_stats_aggregation(
 
     await app_client.post(
         "/save",
-        json={"job_id": job_id_1, "rating": 5},
+        json={"job_id": job_id_1, "rating": 5, "processing_time_ms": 100},
     )
     await app_client.post(
         "/save",
-        json={"job_id": job_id_2, "rating": 3},
+        json={"job_id": job_id_2, "rating": 3, "processing_time_ms": 200},
     )
 
     response = await app_client.get("/stats")

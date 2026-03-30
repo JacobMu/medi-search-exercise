@@ -31,12 +31,14 @@ class AnalyticsStore:
             completions = list(self._completions)
 
         total = len(completions)
+        base_distribution: dict[str, int] = {str(i): 0 for i in range(1, 6)}
+
         if total == 0:
             return StatsResponse(
                 total_generations=0,
                 avg_rating=0.0,
                 avg_processing_time_ms=0.0,
-                rating_distribution={},
+                rating_distribution=base_distribution,
             )
 
         avg_processing_time_ms = sum(completions) / total
@@ -44,10 +46,10 @@ class AnalyticsStore:
         rated = len(entries)
         if rated == 0:
             avg_rating = 0.0
-            distribution: dict[str, int] = {}
+            distribution: dict[str, int] = base_distribution
         else:
             avg_rating = sum(e.rating for e in entries) / rated
-            distribution = dict(Counter(str(e.rating) for e in entries))
+            distribution = {**base_distribution, **dict(Counter(str(e.rating) for e in entries))}
 
         return StatsResponse(
             total_generations=total,
