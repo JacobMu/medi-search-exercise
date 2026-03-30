@@ -128,6 +128,16 @@ When running with Docker Compose, `BACKEND_URL` is automatically set to `http://
 
 **Backend:**
 
+The backend tests require a `test_assets/` folder at the project root containing sample image files. Create it and add the following files before running:
+
+```
+test_assets/
+  avatar1.png    # sample avatar image
+  avatar2.png    # sample avatar image
+  avatar3.png    # sample avatar image
+  screenshot.png # sample app screenshot
+```
+
 ```bash
 cd be
 uv run pytest
