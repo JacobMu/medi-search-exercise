@@ -3,8 +3,8 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 
 from src.config import OUTPUT_DIR
-from src.shared.analytics_store import analytics_store
 from src.overlay.compositor import composite
+from src.shared.analytics_store import analytics_store
 from src.shared.job_store import job_store
 
 # Shared process-pool — initialised once at import time so workers are

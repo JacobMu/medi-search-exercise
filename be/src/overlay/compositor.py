@@ -108,7 +108,7 @@ def _inset_quad(pts: NDArray[np.float32], pixels: int = 10) -> NDArray[np.float3
         b1, b2 = inset_lines[i]
         da = a2 - a1
         db = b2 - b1
-        # Solve: a1 + t*da = b1 + s*db  →  [da | -db] · [t, s]ᵀ = b1 − a1
+        # Solve: a1 + t*da = b1 + s*db  ->  [da | -db] . [t, s]^T = b1 - a1
         mat = np.column_stack([da, -db])
         det = float(np.linalg.det(mat))
         if abs(det) < 1e-9:
@@ -313,8 +313,8 @@ def composite(avatar_bytes: bytes, screenshot_bytes: bytes) -> bytes:
     # eroded_cover: fills the thin ring between the inset-quad boundary and
     # the glass edge that warp_mask alone might not reach.  Use the dilated
     # `mask` here so interior holes from specular highlights are filled.
-    _ERODE_COVER_KERNEL = np.ones((5, 5), np.uint8)
-    eroded_cover = cv2.erode(mask, _ERODE_COVER_KERNEL, iterations=2)
+    erode_cover_kernel = np.ones((5, 5), np.uint8)
+    eroded_cover = cv2.erode(mask, erode_cover_kernel, iterations=2)
     composite_mask = cv2.bitwise_or(warp_mask, eroded_cover)
     # Hard clip to raw HSV detections only — strictly inside the glass.
     composite_mask = cv2.bitwise_and(composite_mask, raw_mask)
