@@ -75,23 +75,62 @@ def _build_green_mask(avatar_bgr: NDArray[np.uint8]) -> NDArray[np.uint8]:
 
 
 def _inset_quad(pts: NDArray[np.float32], pixels: int = 10) -> NDArray[np.float32]:
-    """Shrink a 4-point quad by moving each corner toward the centroid by `pixels`.
+    """Shrink a 4-point quad by moving each edge inward by `pixels`.
 
-    Counteracts the morphological dilation expansion (~7 px per side) so the
-    destination quad sits inside the actual phone glass boundary.
+    Translates each edge inward perpendicular to itself, then recomputes corners
+    as intersections of adjacent inset edges.  This gives a uniform inset on all
+    sides regardless of the quad's aspect ratio.  The previous corner-toward-
+    centroid approach over-shrank the longer axis (vertical for portrait phones),
+    leaving the top/bottom edges under-covered while the shorter axis was
+    under-inset, causing overflow on those sides.
     """
-    centroid = pts.mean(axis=0)
-    dirs = centroid - pts
-    norms = np.linalg.norm(dirs, axis=1, keepdims=True).clip(min=1e-6)
-    return (pts + dirs / norms * pixels).astype(np.float32)
+    n = 4
+    centroid = pts.mean(axis=0).astype(np.float64)
+    inset_lines: list[tuple[NDArray[np.float64], NDArray[np.float64]]] = []
+
+    for i in range(n):
+        p1 = pts[i].astype(np.float64)
+        p2 = pts[(i + 1) % n].astype(np.float64)
+        edge = p2 - p1
+        length = float(np.linalg.norm(edge))
+        # Perpendicular unit normal via left-rotation of the edge direction.
+        normal = np.array([-edge[1], edge[0]]) / max(length, 1e-9)
+        # Flip to ensure the normal points toward the polygon interior.
+        mid = (p1 + p2) / 2.0
+        if float(np.dot(normal, centroid - mid)) < 0:
+            normal = -normal
+        inset_lines.append((p1 + pixels * normal, p2 + pixels * normal))
+
+    # New corner i is the intersection of inset edge (i-1) and inset edge i.
+    result = np.empty((n, 2), dtype=np.float64)
+    for i in range(n):
+        a1, a2 = inset_lines[(i - 1) % n]
+        b1, b2 = inset_lines[i]
+        da = a2 - a1
+        db = b2 - b1
+        # Solve: a1 + t*da = b1 + s*db  →  [da | -db] · [t, s]ᵀ = b1 − a1
+        mat = np.column_stack([da, -db])
+        det = float(np.linalg.det(mat))
+        if abs(det) < 1e-9:
+            # Parallel edges — use midpoint as fallback.
+            result[i] = (a2 + b1) / 2.0
+        else:
+            t = float(np.linalg.solve(mat, b1 - a1)[0])
+            result[i] = a1 + t * da
+
+    return result.astype(np.float32)
 
 
 def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
-    """Return the 4-corner bounding rectangle of the largest green contour.
+    """Return the 4-corner quad of the largest green contour.
 
-    Uses cv2.minAreaRect so the returned quad accurately matches the phone
-    screen's orientation rather than being skewed by contour-point sampling
-    artefacts (which approxPolyDP corners can introduce).
+    Uses minAreaRect to derive the screen's rotation angle (the globally
+    optimal orientation for the whole contour), then recomputes each corner's
+    position by projecting the convex-hull points onto the rectangle's own
+    axes and taking a trimmed extent (2nd/98th percentile).  The trim discards
+    the small bleed protrusions that can push individual minAreaRect corners
+    well beyond the actual glass boundary, while leaving the rotation angle
+    completely unchanged.
 
     Returns an array of shape (4, 2) in float32, ordered [TL, TR, BR, BL].
     Raises ValueError if no suitable contour is found.
@@ -104,23 +143,63 @@ def _find_screen_quad(mask: NDArray[np.uint8]) -> NDArray[np.float32]:
     if cv2.contourArea(largest) < 500:
         raise ValueError("Green-screen region is too small to be a phone screen.")
 
-    # minAreaRect fits the tightest enclosing rectangle to all contour points,
-    # giving an accurate estimate of the phone screen's orientation.
     rect = cv2.minAreaRect(largest)
-    pts = cv2.boxPoints(rect).astype(np.float32)
+    center, _size, angle = rect
+
+    # Principal axes of the fitted rectangle (unit vectors).
+    theta = np.radians(angle)
+    axis1 = np.array([np.cos(theta), np.sin(theta)], dtype=np.float64)
+    axis2 = np.array([-np.sin(theta), np.cos(theta)], dtype=np.float64)
+
+    # Project the convex hull onto both axes to sample the actual glass extent.
+    # Hull points are denser and more representative than the raw contour for
+    # this purpose; the trim clips the tail introduced by corner bleed.
+    hull_pts = cv2.convexHull(largest).reshape(-1, 2).astype(np.float64)
+    center_arr = np.array(center, dtype=np.float64)
+    local = hull_pts - center_arr
+    proj1 = local @ axis1
+    proj2 = local @ axis2
+
+    # 2 % trim on each side: robust enough to remove small corner bleeds while
+    # preserving the full glass area for clean screens.
+    trim = 2.0
+    p1_lo = float(np.percentile(proj1, trim))
+    p1_hi = float(np.percentile(proj1, 100.0 - trim))
+    p2_lo = float(np.percentile(proj2, trim))
+    p2_hi = float(np.percentile(proj2, 100.0 - trim))
+
+    # Recentre on the trimmed extent midpoint so there is no systematic shift.
+    new_center = (
+        center_arr
+        + ((p1_lo + p1_hi) / 2.0) * axis1
+        + ((p2_lo + p2_hi) / 2.0) * axis2
+    )
+    half1 = (p1_hi - p1_lo) / 2.0
+    half2 = (p2_hi - p2_lo) / 2.0
+
+    # Build the 4 corners; ordering follows minAreaRect box-point convention so
+    # the existing coord-sum/diff ordering logic works unchanged.
+    pts = np.array(
+        [
+            new_center - half1 * axis1 - half2 * axis2,
+            new_center + half1 * axis1 - half2 * axis2,
+            new_center + half1 * axis1 + half2 * axis2,
+            new_center - half1 * axis1 + half2 * axis2,
+        ],
+        dtype=np.float32,
+    )
 
     coord_sums = pts.sum(axis=1)
     coord_diffs = np.diff(pts, axis=1).flatten()
-    ordered = np.array(
+    return np.array(
         [
-            pts[np.argmin(coord_sums)],  # top-left
+            pts[np.argmin(coord_sums)],   # top-left
             pts[np.argmin(coord_diffs)],  # top-right
-            pts[np.argmax(coord_sums)],  # bottom-right
+            pts[np.argmax(coord_sums)],   # bottom-right
             pts[np.argmax(coord_diffs)],  # bottom-left
         ],
         dtype=np.float32,
     )
-    return ordered
 
 
 def _crop_to_content(img_bgr: NDArray[np.uint8], threshold: int = 250) -> NDArray[np.uint8]:
@@ -220,11 +299,30 @@ def composite(avatar_bytes: bytes, screenshot_bytes: bytes) -> bytes:
     warped, warp_mask = _warp_screenshot(screenshot_bgr, screen_quad, (canvas_h, canvas_w))
 
     result = avatar_bgr.copy()
-    # Use only the warped screen mask to composite the screenshot.
-    # ORing with the raw green mask caused screenshot content (from BORDER_REPLICATE)
-    # to bleed into the phone bezel where residual green pixels extended beyond the
-    # actual screen glass, producing visible overflow on the left and bottom-right.
-    result[warp_mask > 0] = warped[warp_mask > 0]
+    # Build a raw HSV mask (no morphological ops) for the final clip.  The
+    # working `mask` was dilated by ~14 px per side to fill holes and stabilise
+    # the contour — this intentionally extends it slightly beyond the actual
+    # glass boundary into the bezel, especially at the BR corner where bleed
+    # protrusions are common.  Using raw_mask for the final AND guarantees we
+    # never paint a dilated-but-not-green (bezel) pixel regardless of which
+    # quad method was used.  The raw mask has no interior holes in practice
+    # because the green-screen fill is solid; any specular-highlight holes are
+    # already covered by warp_mask (which spans the full inset quad).
+    hsv = cv2.cvtColor(avatar_bgr, cv2.COLOR_BGR2HSV)
+    raw_mask = cv2.inRange(
+        hsv,
+        np.array([_H_LOW, _S_LOW, _V_LOW], dtype=np.uint8),
+        np.array([_H_HIGH, _S_HIGH, _V_HIGH], dtype=np.uint8),
+    )
+    # eroded_cover: fills the thin ring between the inset-quad boundary and
+    # the glass edge that warp_mask alone might not reach.  Use the dilated
+    # `mask` here so interior holes from specular highlights are filled.
+    _ERODE_COVER_KERNEL = np.ones((5, 5), np.uint8)
+    eroded_cover = cv2.erode(mask, _ERODE_COVER_KERNEL, iterations=2)
+    composite_mask = cv2.bitwise_or(warp_mask, eroded_cover)
+    # Hard clip to raw HSV detections only — strictly inside the glass.
+    composite_mask = cv2.bitwise_and(composite_mask, raw_mask)
+    result[composite_mask > 0] = warped[composite_mask > 0]
 
     success, encoded = cv2.imencode(".png", result)
     if not success:
