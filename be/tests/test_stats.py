@@ -5,6 +5,7 @@ from tests.conftest import poll_job
 
 async def test_stats_empty(app_client: AsyncClient) -> None:
     response = await app_client.get("/stats")
+
     assert response.status_code == 200
     body = response.json()
     assert body["total_generations"] == 0
@@ -20,18 +21,14 @@ async def test_stats_aggregation(
         "avatar": ("avatar.png", avatar_bytes, "image/png"),
         "screenshot": ("screenshot.png", screenshot_bytes, "image/png"),
     }
-
     r1 = await app_client.post("/overlay", files=files)
-    assert r1.status_code == 202
+    assert r1.status_code == 202  # precondition
     job_id_1 = r1.json()["job_id"]
-
     r2 = await app_client.post("/overlay", files=files)
-    assert r2.status_code == 202
+    assert r2.status_code == 202  # precondition
     job_id_2 = r2.json()["job_id"]
-
     await poll_job(app_client, job_id_1, "completed")
     await poll_job(app_client, job_id_2, "completed")
-
     await app_client.post(
         "/save",
         json={"job_id": job_id_1, "rating": 5, "processing_time_ms": 100},
@@ -42,6 +39,7 @@ async def test_stats_aggregation(
     )
 
     response = await app_client.get("/stats")
+
     assert response.status_code == 200
     body = response.json()
     assert body["total_generations"] == 2

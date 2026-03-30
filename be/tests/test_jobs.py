@@ -30,11 +30,12 @@ async def test_get_job_pending(
         "avatar": ("avatar.png", avatar_bytes, "image/png"),
         "screenshot": ("screenshot.png", screenshot_bytes, "image/png"),
     }
-    response = await app_client.post("/overlay", files=files)
-    assert response.status_code == 202
-    job_id = response.json()["job_id"]
+    overlay_response = await app_client.post("/overlay", files=files)
+    assert overlay_response.status_code == 202  # precondition
+    job_id = overlay_response.json()["job_id"]
 
     r = await app_client.get(f"/jobs/{job_id}")
+
     assert r.status_code == 200
     body = r.json()
     assert body["status"] in ("pending", "processing")
@@ -48,11 +49,12 @@ async def test_get_job_completed(
         "avatar": ("avatar.png", avatar_bytes, "image/png"),
         "screenshot": ("screenshot.png", screenshot_bytes, "image/png"),
     }
-    response = await app_client.post("/overlay", files=files)
-    assert response.status_code == 202
-    job_id = response.json()["job_id"]
+    overlay_response = await app_client.post("/overlay", files=files)
+    assert overlay_response.status_code == 202  # precondition
+    job_id = overlay_response.json()["job_id"]
 
     data = await poll_job(app_client, job_id, "completed")
+
     assert data["status"] == "completed"
     assert "output_url" in data
     assert data["output_url"].endswith(".png")
@@ -60,6 +62,7 @@ async def test_get_job_completed(
 
 async def test_get_job_not_found(app_client: AsyncClient) -> None:
     r = await app_client.get("/jobs/nonexistent-job-id-12345")
+
     assert r.status_code == 404
 
 
@@ -70,9 +73,11 @@ async def test_get_job_failed_graceful(app_client: AsyncClient, avatar_bytes: by
         "avatar": ("avatar.png", avatar_bytes, "image/png"),
         "screenshot": ("screenshot.webp", corrupt_screenshot, "image/webp"),
     }
-    response = await app_client.post("/overlay", files=files)
-    assert response.status_code == 202
-    job_id = response.json()["job_id"]
+    overlay_response = await app_client.post("/overlay", files=files)
+    assert overlay_response.status_code == 202  # precondition
+    job_id = overlay_response.json()["job_id"]
+
 
     data = await poll_job(app_client, job_id, "failed")
+
     assert data["status"] == "failed"

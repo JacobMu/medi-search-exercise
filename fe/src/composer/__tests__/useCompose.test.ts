@@ -4,237 +4,248 @@ import { act, renderHook } from "@testing-library/react";
 
 jest.mock("@/lib/api");
 
-const mockSubmitOverlay = api.submitOverlay as jest.MockedFunction<typeof api.submitOverlay>;
+const mockSubmitOverlay = api.submitOverlay as jest.MockedFunction<
+	typeof api.submitOverlay
+>;
 const mockPollJob = api.pollJob as jest.MockedFunction<typeof api.pollJob>;
-const mockSaveRating = api.saveRating as jest.MockedFunction<typeof api.saveRating>;
+const mockSaveRating = api.saveRating as jest.MockedFunction<
+	typeof api.saveRating
+>;
 
 function makeFile(name: string): File {
-  return new File(["data"], name, { type: "image/png" });
+	return new File(["data"], name, { type: "image/png" });
 }
 
 describe("useCompose", () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.clearAllMocks();
-  });
+	beforeEach(() => {
+		jest.useFakeTimers();
+		jest.clearAllMocks();
+	});
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+	afterEach(() => {
+		jest.useRealTimers();
+	});
 
-  it("initial state is idle with all null fields", () => {
-    const { result } = renderHook(() => useCompose());
-    expect(result.current.state.phase).toBe("idle");
-    expect(result.current.state.jobId).toBeNull();
-    expect(result.current.state.outputUrl).toBeNull();
-    expect(result.current.state.errorMessage).toBeNull();
-    expect(result.current.state.processingTimeMs).toBeNull();
-  });
+	it("initial state is idle with all null fields", () => {
+		// Act
+		const { result } = renderHook(() => useCompose());
 
-  it("submit → uploading → polling → done (happy path)", async () => {
-    mockSubmitOverlay.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    mockPollJob
-      .mockResolvedValueOnce({ job_id: "abc", status: "processing" })
-      .mockResolvedValueOnce({
-        job_id: "abc",
-        status: "completed",
-        output_url: "/output/abc.png",
-      });
+		// Assert
+		expect(result.current.state.phase).toBe("idle");
+		expect(result.current.state.jobId).toBeNull();
+		expect(result.current.state.outputUrl).toBeNull();
+		expect(result.current.state.errorMessage).toBeNull();
+		expect(result.current.state.processingTimeMs).toBeNull();
+	});
 
-    const { result } = renderHook(() => useCompose());
+	it("submit → uploading → polling → done (happy path)", async () => {
+		// Arrange
+		mockSubmitOverlay.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		mockPollJob
+			.mockResolvedValueOnce({ job_id: "abc", status: "processing" })
+			.mockResolvedValueOnce({
+				job_id: "abc",
+				status: "completed",
+				output_url: "/output/abc.png",
+			});
+		const { result } = renderHook(() => useCompose());
 
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
+		// Act
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(1100);
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(1100);
+		});
 
-    expect(result.current.state.phase).toBe("polling");
+		// Assert
+		expect(result.current.state.phase).toBe("done");
+		expect(result.current.state.outputUrl).toBe("/output/abc.png");
+		expect(result.current.state.processingTimeMs).not.toBeNull();
+		expect(result.current.state.processingTimeMs).toBeGreaterThanOrEqual(0);
+	});
 
-    // First tick: still processing
-    await act(async () => {
-      jest.advanceTimersByTime(1100);
-    });
-    expect(result.current.state.phase).toBe("polling");
+	it("polling → error when status is failed", async () => {
+		// Arrange
+		mockSubmitOverlay.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		mockPollJob.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "failed",
+			error: "Compositor crashed",
+		});
+		const { result } = renderHook(() => useCompose());
 
-    // Second tick: completed
-    await act(async () => {
-      jest.advanceTimersByTime(1100);
-    });
+		// Act
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(1100);
+		});
 
-    expect(result.current.state.phase).toBe("done");
-    expect(result.current.state.outputUrl).toBe("/output/abc.png");
-    expect(result.current.state.processingTimeMs).not.toBeNull();
-    expect(result.current.state.processingTimeMs).toBeGreaterThanOrEqual(0);
-  });
+		// Assert
+		expect(result.current.state.phase).toBe("error");
+		expect(result.current.state.errorMessage).toBe("Compositor crashed");
+	});
 
-  it("polling → error when status is failed", async () => {
-    mockSubmitOverlay.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    mockPollJob.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "failed",
-      error: "Compositor crashed",
-    });
+	it("polling → error on timeout after 60 s", async () => {
+		// Arrange
+		mockSubmitOverlay.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		mockPollJob.mockResolvedValue({ job_id: "abc", status: "processing" });
+		const { result } = renderHook(() => useCompose());
 
-    const { result } = renderHook(() => useCompose());
+		// Act
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(61000);
+		});
 
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
+		// Assert
+		expect(result.current.state.phase).toBe("error");
+		expect(result.current.state.errorMessage).toBe(
+			"Timed out waiting for result",
+		);
+	});
 
-    await act(async () => {
-      jest.advanceTimersByTime(1100);
-    });
+	it("rate() calls saveRating with correct args", async () => {
+		// Arrange
+		mockSubmitOverlay.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		mockPollJob.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "completed",
+			output_url: "/output/abc.png",
+		});
+		mockSaveRating.mockResolvedValueOnce(undefined);
+		const { result } = renderHook(() => useCompose());
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(1100);
+		});
+		const { processingTimeMs } = result.current.state;
 
-    expect(result.current.state.phase).toBe("error");
-    expect(result.current.state.errorMessage).toBe("Compositor crashed");
-  });
+		// Act
+		await act(async () => {
+			result.current.rate(4);
+		});
 
-  it("polling → error on timeout after 60 s", async () => {
-    mockSubmitOverlay.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    mockPollJob.mockResolvedValue({ job_id: "abc", status: "processing" });
+		// Assert
+		expect(mockSaveRating).toHaveBeenCalledWith({
+			job_id: "abc",
+			rating: 4,
+			processing_time_ms: processingTimeMs,
+		});
+	});
 
-    const { result } = renderHook(() => useCompose());
+	it("transitions to error when submitOverlay rejects", async () => {
+		// Arrange
+		(api.submitOverlay as jest.Mock).mockRejectedValueOnce(
+			new Error("Upload failed"),
+		);
+		const { result } = renderHook(() => useCompose());
 
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
+		// Act
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
 
-    await act(async () => {
-      jest.advanceTimersByTime(61000);
-    });
+		// Assert
+		expect(result.current.state.phase).toBe("error");
+		expect(result.current.state.errorMessage).toBe("Upload failed");
+	});
 
-    expect(result.current.state.phase).toBe("error");
-    expect(result.current.state.errorMessage).toBe("Timed out waiting for result");
-  });
+	it("transitions to error when pollJob throws", async () => {
+		// Arrange
+		(api.submitOverlay as jest.Mock).mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		(api.pollJob as jest.Mock).mockRejectedValueOnce(
+			new Error("Network error"),
+		);
+		const { result } = renderHook(() => useCompose());
 
-  it("rate() calls saveRating with correct args", async () => {
-    mockSubmitOverlay.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    mockPollJob.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "completed",
-      output_url: "/output/abc.png",
-    });
-    mockSaveRating.mockResolvedValueOnce(undefined);
+		// Act
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(1100);
+		});
 
-    const { result } = renderHook(() => useCompose());
+		// Assert
+		expect(result.current.state.phase).toBe("error");
+		expect(result.current.state.errorMessage).toBe("Network error");
+	});
 
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
+	it("transitions to error when output_url is not a safe path", async () => {
+		// Arrange
+		(api.submitOverlay as jest.Mock).mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		(api.pollJob as jest.Mock).mockResolvedValue({
+			job_id: "abc",
+			status: "completed",
+			output_url: "javascript:alert(1)",
+		});
+		const { result } = renderHook(() => useCompose());
 
-    await act(async () => {
-      jest.advanceTimersByTime(1100);
-    });
+		// Act
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
+		await act(async () => {
+			jest.advanceTimersByTime(1100);
+		});
 
-    expect(result.current.state.phase).toBe("done");
-    const { processingTimeMs } = result.current.state;
+		// Assert
+		expect(result.current.state.phase).toBe("error");
+		expect(result.current.state.errorMessage).toBe(
+			"Received an invalid output URL from the server",
+		);
+	});
 
-    await act(async () => {
-      result.current.rate(4);
-    });
+	it("reset() returns state to idle", async () => {
+		// Arrange
+		mockSubmitOverlay.mockResolvedValueOnce({
+			job_id: "abc",
+			status: "pending",
+		});
+		mockPollJob.mockResolvedValue({ job_id: "abc", status: "processing" });
+		const { result } = renderHook(() => useCompose());
+		await act(async () => {
+			result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
+		});
 
-    expect(mockSaveRating).toHaveBeenCalledWith({
-      job_id: "abc",
-      rating: 4,
-      processing_time_ms: processingTimeMs,
-    });
-  });
+		// Act
+		act(() => {
+			result.current.reset();
+		});
 
-  it("transitions to error when submitOverlay rejects", async () => {
-    (api.submitOverlay as jest.Mock).mockRejectedValueOnce(new Error("Upload failed"));
-
-    const { result } = renderHook(() => useCompose());
-
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
-
-    expect(result.current.state.phase).toBe("error");
-    expect(result.current.state.errorMessage).toBe("Upload failed");
-  });
-
-  it("transitions to error when pollJob throws", async () => {
-    (api.submitOverlay as jest.Mock).mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    (api.pollJob as jest.Mock).mockRejectedValueOnce(new Error("Network error"));
-
-    const { result } = renderHook(() => useCompose());
-
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(1100);
-    });
-
-    expect(result.current.state.phase).toBe("error");
-    expect(result.current.state.errorMessage).toBe("Network error");
-  });
-
-  it("transitions to error when output_url is not a safe path", async () => {
-    (api.submitOverlay as jest.Mock).mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    (api.pollJob as jest.Mock).mockResolvedValue({
-      job_id: "abc",
-      status: "completed",
-      output_url: "javascript:alert(1)",
-    });
-
-    const { result } = renderHook(() => useCompose());
-
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(1100);
-    });
-
-    expect(result.current.state.phase).toBe("error");
-    expect(result.current.state.errorMessage).toBe(
-      "Received an invalid output URL from the server"
-    );
-  });
-
-  it("reset() returns state to idle", async () => {
-    mockSubmitOverlay.mockResolvedValueOnce({
-      job_id: "abc",
-      status: "pending",
-    });
-    mockPollJob.mockResolvedValue({ job_id: "abc", status: "processing" });
-
-    const { result } = renderHook(() => useCompose());
-
-    await act(async () => {
-      result.current.submit(makeFile("avatar.png"), makeFile("screenshot.png"));
-    });
-
-    expect(result.current.state.phase).toBe("polling");
-
-    act(() => {
-      result.current.reset();
-    });
-
-    expect(result.current.state.phase).toBe("idle");
-    expect(result.current.state.jobId).toBeNull();
-    expect(result.current.state.outputUrl).toBeNull();
-    expect(result.current.state.errorMessage).toBeNull();
-    expect(result.current.state.processingTimeMs).toBeNull();
-  });
+		// Assert
+		expect(result.current.state.phase).toBe("idle");
+		expect(result.current.state.jobId).toBeNull();
+		expect(result.current.state.outputUrl).toBeNull();
+		expect(result.current.state.errorMessage).toBeNull();
+		expect(result.current.state.processingTimeMs).toBeNull();
+	});
 });
