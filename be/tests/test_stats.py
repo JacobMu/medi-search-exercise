@@ -1,5 +1,7 @@
 from httpx import AsyncClient
 
+from tests.conftest import poll_job
+
 
 async def test_stats_empty(app_client: AsyncClient) -> None:
     response = await app_client.get("/stats")
@@ -27,13 +29,16 @@ async def test_stats_aggregation(
     assert r2.status_code == 202
     job_id_2 = r2.json()["job_id"]
 
+    await poll_job(app_client, job_id_1, "completed")
+    await poll_job(app_client, job_id_2, "completed")
+
     await app_client.post(
         "/save",
-        json={"job_id": job_id_1, "rating": 5, "processing_time_ms": 200},
+        json={"job_id": job_id_1, "rating": 5},
     )
     await app_client.post(
         "/save",
-        json={"job_id": job_id_2, "rating": 3, "processing_time_ms": 400},
+        json={"job_id": job_id_2, "rating": 3},
     )
 
     response = await app_client.get("/stats")
@@ -41,6 +46,6 @@ async def test_stats_aggregation(
     body = response.json()
     assert body["total_generations"] == 2
     assert body["avg_rating"] == 4.0
-    assert body["avg_processing_time_ms"] == 300.0
+    assert body["avg_processing_time_ms"] > 0
     assert body["rating_distribution"]["5"] == 1
     assert body["rating_distribution"]["3"] == 1

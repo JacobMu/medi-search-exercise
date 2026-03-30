@@ -13,17 +13,23 @@ class AnalyticsStore:
 
     def __init__(self) -> None:
         self._entries: list[SaveRequest] = []
+        self._completions: list[int] = []
         self._lock = asyncio.Lock()
 
     async def record(self, entry: SaveRequest) -> None:
         async with self._lock:
             self._entries.append(entry)
 
+    async def record_completion(self, processing_time_ms: int) -> None:
+        async with self._lock:
+            self._completions.append(processing_time_ms)
+
     async def stats(self) -> StatsResponse:
         async with self._lock:
             entries = list(self._entries)
+            completions = list(self._completions)
 
-        total = len(entries)
+        total = len(completions)
         if total == 0:
             return StatsResponse(
                 total_generations=0,
@@ -32,10 +38,15 @@ class AnalyticsStore:
                 rating_distribution={},
             )
 
-        avg_rating = sum(e.rating for e in entries) / total
-        avg_processing_time_ms = sum(e.processing_time_ms for e in entries) / total
+        avg_processing_time_ms = sum(completions) / total
 
-        distribution = dict(Counter(str(e.rating) for e in entries))
+        rated = len(entries)
+        if rated == 0:
+            avg_rating = 0.0
+            distribution: dict[str, int] = {}
+        else:
+            avg_rating = sum(e.rating for e in entries) / rated
+            distribution = dict(Counter(str(e.rating) for e in entries))
 
         return StatsResponse(
             total_generations=total,

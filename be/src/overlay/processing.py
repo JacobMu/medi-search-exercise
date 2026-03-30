@@ -1,7 +1,9 @@
 import asyncio
+import time
 from concurrent.futures import ProcessPoolExecutor
 
 from src.config import OUTPUT_DIR
+from src.services.analytics import analytics_store
 from src.services.compositor import composite
 from src.store.jobs import job_store
 
@@ -16,6 +18,8 @@ background_tasks: set[asyncio.Task[None]] = set()
 
 async def run_composite_job(job_id: str, avatar_bytes: bytes, screenshot_bytes: bytes) -> None:
     """Background task: run compositing in a process-pool, update job state."""
+    # Timer starts at task dispatch (includes job-store write + compositor work).
+    start = time.monotonic()
     await job_store.set_processing(job_id)
     loop = asyncio.get_running_loop()
     try:
@@ -33,3 +37,4 @@ async def run_composite_job(job_id: str, avatar_bytes: bytes, screenshot_bytes: 
     output_path.write_bytes(result_bytes)
 
     await job_store.set_completed(job_id, str(output_path))
+    await analytics_store.record_completion(int((time.monotonic() - start) * 1000))
