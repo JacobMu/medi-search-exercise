@@ -22,11 +22,8 @@ dev = [
     "ruff>=0.15.8",
 ]
 
-[tool.uv.scripts]
-lint = "ruff check ."
-lint-fix = "ruff check --fix ."
-format = "ruff format ."
-format-check = "ruff format --check ."
+[tool.uv]
+preview = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
