@@ -1,4 +1,4 @@
-# Agent Orchestration — medi-search-exercise
+# Agent Orchestration — image-compositor
 
 This workspace uses an Atlas-style conductor-delegate multi-agent system covering the full development lifecycle: **Plan → Implement → Review → Commit**.
 

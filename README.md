@@ -1,4 +1,4 @@
-# medi-search-exercise
+# image-compositor
 
 An ad creative compositor that replaces green-screen phone displays with app screenshots.
 
