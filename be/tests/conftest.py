@@ -47,7 +47,7 @@ def reset_stores() -> None:
 
 @pytest.fixture
 def avatar_bytes() -> bytes:
-    return (TEST_ASSETS / "avatar1.png").read_bytes()
+    return (TEST_ASSETS / "image1.png").read_bytes()
 
 
 @pytest.fixture

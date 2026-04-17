@@ -132,9 +132,9 @@ The backend tests require a `test_assets/` folder at the project root containing
 
 ```
 test_assets/
-  avatar1.png    # sample avatar image
-  avatar2.png    # sample avatar image
-  avatar3.png    # sample avatar image
+  image1.png    # sample avatar image
+  image2.png    # sample avatar image
+  image3.png    # sample avatar image
   screenshot.png # sample app screenshot
 ```
 
